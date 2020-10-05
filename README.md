@@ -1,3 +1,6 @@
+#### Archived
+This project is no longer in active development. This machine has passed into the hands of my brother and has been replaced by an Appartmento.
+
 #### TODO
 * Update requirements and install script
 * Re-include web interface and make it a config whether or not to use it
