@@ -16,6 +16,14 @@ LCD_WIDTH = 320
 LCD_HEIGHT = 240
 LCD_SIZE = (LCD_WIDTH, LCD_HEIGHT)
 
+# Strip on the right edge of the LCD, next to the 4 PiTFT tactile buttons.
+LABEL_WIDTH = 56
+CHART_WIDTH = LCD_WIDTH - LABEL_WIDTH
+# Vertical centre of each physical button, top to bottom (GPIO 17, 22, 23, 27).
+# Tweak these if the labels don't line up with the buttons on your screen.
+BUTTON_Y = [48, 106, 164, 222]
+FONT_SIZE = 17
+
 class Chart(object):
   def __init__(self, refresh_rate, span, state):
     self._last_on_state = None
@@ -24,11 +32,12 @@ class Chart(object):
     self._len = int(span / refresh_rate)
     #while self._state['temp'] == 0.0:
     #  time.sleep(0.1)
-    self._data = [self._state['temp'] for x in xrange(self._len)]
-    self._target = [self._state['settemp'] for x in xrange(self._len)]
+    self._data = [self._state['temp'] for x in range(self._len)]
+    self._target = [self._state['settemp'] for x in range(self._len)]
     self._refresh_rate = refresh_rate
+    self._font = pygame.font.Font(None, FONT_SIZE)
 
-    self._figure = plt.figure(figsize=[4,3], dpi=80)
+    self._figure = plt.figure(figsize=[CHART_WIDTH / 80., LCD_HEIGHT / 80.], dpi=80)
     self._axes = self._figure.add_subplot(111)
     self._axes.grid(linestyle='dotted')
 
@@ -76,8 +85,29 @@ class Chart(object):
     renderer = canvas.get_renderer()
     raw_data = renderer.tostring_rgb()
     surf = pygame.image.fromstring(raw_data, size, "RGB")
-    pygame.display.get_surface().blit(surf, (0,0))
+    screen = pygame.display.get_surface()
+    screen.fill((0, 0, 0))
+    screen.blit(surf, (0,0))
+    self.draw_button_labels(screen)
     pygame.display.flip()
+
+  def draw_button_labels(self, screen):
+    on = self._state['on']
+    grey = (160, 160, 160)
+    labels = [
+      ('TEMP +', grey),
+      ('TEMP -', grey),
+      ('BOOST',  (255, 170, 0)),
+      ('ON' if on else 'OFF', (80, 220, 80) if on else (230, 70, 70)),
+    ]
+    x_right = LCD_WIDTH - 4
+    pygame.draw.line(screen, (60, 60, 60), (CHART_WIDTH, 0), (CHART_WIDTH, LCD_HEIGHT))
+    for (text, color), y in zip(labels, BUTTON_Y):
+      rendered = self._font.render(text, True, color)
+      rect = rendered.get_rect(midright=(x_right, y))
+      screen.blit(rendered, rect)
+      # small tick pointing at the physical button
+      pygame.draw.line(screen, color, (LCD_WIDTH - 3, y), (LCD_WIDTH - 1, y))
 
   def run(self):
     crashed = False
@@ -92,9 +122,11 @@ class Chart(object):
         for event in pygame.event.get():
           if event.type == pygame.QUIT:
             crashed = True
-          time.sleep(self._refresh_rate)
-    except Exception as e:
-      logger.error(e)
+        # Must be outside the event loop: with no events queued the old
+        # placement never slept, so the GUI redrew flat out and ate a core.
+        time.sleep(self._refresh_rate)
+    except Exception:
+      logger.exception('GUI loop crashed')
     except KeyboardInterrupt:
       logger.info('User interrupted process, exiting GUI')
     logger.info('GUI exiting run() loop')

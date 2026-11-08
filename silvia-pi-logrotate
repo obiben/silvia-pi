@@ -1,7 +1,11 @@
-/root/silvia-pi/silvia-pi.log {
-  rotate 7
+# Installed to /etc/logrotate.d/silvia-pi by setup.sh.
+# Covers the app log and any leftover date-named logs from older versions.
+/home/pi/silvia-pi/logs/*.log {
   daily
+  maxsize 10M
+  rotate 14
   compress
+  delaycompress
   copytruncate
   missingok
   notifempty

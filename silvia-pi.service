@@ -1,0 +1,21 @@
+[Unit]
+Description=silvia-pi espresso machine PID controller
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/silvia-pi
+ExecStart=/home/pi/silvia-pi/silvia-pi.py
+# Status-line prints go to the journal; the detailed log stays in logs/<date>.log
+StandardOutput=journal
+StandardError=journal
+# Come back no matter how we died (crash, killed child, Manager process gone...)
+Restart=always
+RestartSec=3
+# SIGTERM lets the child processes drive the relay pins low before exiting
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

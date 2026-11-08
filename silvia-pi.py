@@ -1,11 +1,16 @@
 #!/usr/bin/python3
 
 import logging
-from datetime import datetime as dt
+import os
 
+LOG_DIR = '/home/pi/silvia-pi/logs'
+# Fixed filename, append mode: rotation is handled by logrotate (see silvia-pi-logrotate).
+# copytruncate + O_APPEND keeps every process writing to the same file safely.
+if not os.path.isdir(LOG_DIR):
+  os.makedirs(LOG_DIR)
 logger = logging.getLogger('silvia')
 logger.setLevel(logging.INFO)
-fh = logging.FileHandler('/home/pi/silvia-pi/logs/%s.log' % dt.strftime(dt.now(), '%Y-%m-%d'))
+fh = logging.FileHandler(os.path.join(LOG_DIR, 'silvia-pi.log'))
 fh.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
@@ -14,25 +19,34 @@ logger.addHandler(fh)
 def he_control_loop(lock,state):
   from heat import Heat
 
+  import signal, sys
+  # terminate() sends SIGTERM; turn it into SystemExit so the finally below
+  # runs and the relay pins are driven low instead of staying wherever they were.
+  signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+  heat_control = None
   try:
     heat_control = Heat(state)
     heat_control.run()
-  except Exception as e:
-    logger.error(e)
+  except Exception:
+    logger.exception('Heat control crashed')
   finally:
     logger.info("----------------Closing heat control----------------")
-    heat_control.cleanup()
+    if heat_control is not None:
+      heat_control.cleanup()
 
 def pid_loop(lock,state):
   from sensor import Sensor
+  pid = None
   try:
     pid = Sensor(state)
     pid.run()
-  except Exception as e:
-    logger.error(e)
+  except Exception:
+    logger.exception('PID loop crashed')
   finally:
     logger.info("--------------------Closing PID---------------------")
-    pid.cleanup()
+    if pid is not None:
+      pid.cleanup()
 
 
 def pygame_gui(lock, state):
@@ -42,8 +56,8 @@ def pygame_gui(lock, state):
     Chart.start_pygame()
     c = Chart(0.5, 30, state)
     c.run()
-  except Exception as e:
-    logger.error(e)
+  except Exception:
+    logger.exception('GUI crashed')
   finally:
     logger.info("--------------------Closing GUI---------------------")
     Chart.stop_pygame()
@@ -144,6 +158,10 @@ if __name__ == '__main__':
   gui.start()
 
   while not pidstate['gui_on']:
+    if not gui.is_alive():
+      logger.error('GUI died during startup, exiting')
+      p.terminate(); h.terminate(); p.join(); h.join()
+      sys.exit(1)
     sleep(1)
 
   up, down, kill, boost = gpio_temp_control(lock, pidstate)
@@ -151,17 +169,29 @@ if __name__ == '__main__':
 
   logger.info('Starting status loop')
   fmt = PartialFormatter()
-  dir(fmt)
-  while p.is_alive and gui.is_alive and h.is_alive and not pidstate['exit']:
+  # Only print the per-second status line when someone is watching a terminal;
+  # under systemd it would just fill the journal.
+  show_status = sys.stdout.isatty()
+  children = {'PID': p, 'heat control': h, 'GUI': gui}
+  exit_code = 0
+  while True:
+    dead = [name for name, proc in children.items() if not proc.is_alive()]
+    if dead:
+      logger.error('Process(es) died: %s. Shutting down so the service can restart.', ', '.join(dead))
+      exit_code = 1
+      break
     try:
-      print(fmt.format('P: {pterm:7.2f}\tI: {iterm:7.2f}\tD: {dterm:7.2f}\tS: {sterm:7.2f}\tOut: {pidval:7.2f} Avg PID: {avgpid:7.2f}\tTemp: {temp:7.2f}\tAvg Temp: {avgtemp:7.2f}', **pidstate))
+      if pidstate['exit']:
+        break
+      if show_status:
+        print(fmt.format('P: {pterm:7.2f}\tI: {iterm:7.2f}\tD: {dterm:7.2f}\tS: {sterm:7.2f}\tOut: {pidval:7.2f} Avg PID: {avgpid:7.2f}\tTemp: {temp:7.2f}\tAvg Temp: {avgtemp:7.2f}', **pidstate))
       sleep(1)
     except KeyboardInterrupt:
       logger.error('Keyboard interrupt, exiting')
       break
-    except Exception as e:
-      logger.error('Error in status loop:')
-      logger.error(str(e))
+    except Exception:
+      logger.exception('Error in status loop (shared state may be gone)')
+      exit_code = 1
       break
 
   logger.info('Killing PID process')
@@ -174,4 +204,5 @@ if __name__ == '__main__':
   h.join()
   gui.join()
 
-  logging.info('All threads joined, exiting')
+  logger.info('All processes joined, exiting with code %d', exit_code)
+  sys.exit(exit_code)
