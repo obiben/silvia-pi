@@ -18,7 +18,7 @@ OUTLIER_CHANCE = 0.0  # set e.g. 0.01 to exercise the outlier filter
 class FakeSensor(object):
   def __init__(self, state):
     self._state = state
-    self._temp = AMBIENT
+    self._temp = 90
     self._last = time()
 
   def readTemp(self):
