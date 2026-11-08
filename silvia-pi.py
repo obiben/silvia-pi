@@ -2,8 +2,9 @@
 
 import logging
 import os
+from simulation import SIM, BASE_DIR  # must precede any RPi/gpiozero import
 
-LOG_DIR = '/home/pi/silvia-pi/logs'
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
 # Fixed filename, append mode: rotation is handled by logrotate (see silvia-pi-logrotate).
 # copytruncate + O_APPEND keeps every process writing to the same file safely.
 if not os.path.isdir(LOG_DIR):
@@ -64,43 +65,17 @@ def pygame_gui(lock, state):
 
 def gpio_temp_control(lock, state):
   from gpiozero import Button
-  from time import time
-  from config import config
-  import os
-  os.system('gpio -g mode 18 pwm | gpio pwmc 1000 | gpio -g pwm 18 800')
-
-  def increase():
-    logger.info("Increase button pressed")
-    state['settemp'] += 0.2
-    config.set_temp = state['settemp']
-    config.save()
-
-  def decrease():
-    logger.info("Decrease button pressed")
-    state['settemp'] -= 0.2
-    config.set_temp = state['settemp']
-    config.save()
-
-  def toggle():
-    logger.info("Exit button pressed")
-    state['on'] = not state['on']
-    if state['on']:
-      os.system('gpio -g pwm 18 800')
-    else:
-      os.system('gpio -g pwm 18 100')
-
-  def set_boost():
-    logger.info("Heating for 5 seconds")
-    state['boost'] = time() + 5
+  import buttons
+  buttons.init_backlight()
 
   up = Button(17)
-  up.when_pressed = increase
+  up.when_pressed = lambda: buttons.increase(state)
   down = Button(22)
-  down.when_pressed = decrease
+  down.when_pressed = lambda: buttons.decrease(state)
   kill = Button(27)
-  kill.when_pressed = toggle
+  kill.when_pressed = lambda: buttons.toggle(state)
   boost = Button(23)
-  boost.when_pressed = set_boost
+  boost.when_pressed = lambda: buttons.boost(state)
 
   return up, down, kill, boost
 
@@ -136,11 +111,11 @@ if __name__ == '__main__':
   pidstate['iterm'] = None
   pidstate['dterm'] = None
   pidstate['sterm'] = None
-  pidstate['pidval'] = None
+  pidstate['pidval'] = 0.  # heat.py compares this numerically; None would crash on py3
   pidstate['boost'] = 0
   pidstate['on'] = True
   pidstate['gui_on'] = False
-  logger.info('Main process started')
+  logger.info('Main process started%s', ' (SIMULATION, no hardware)' if SIM else '')
 
   logger.info('Starting PID loop')
   p = Process(target=pid_loop,args=(lock, pidstate))

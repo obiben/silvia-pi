@@ -6,14 +6,23 @@
 #   make logs             follow the app log
 #   make journal          follow the systemd journal (stderr / tracebacks)
 #   sudo make restart     restart the service (after editing code)
+#   make sim              run on a desktop with simulated hardware (no sudo)
+#   make sim-deps         pip install what the simulation needs
 
 SERVICE     := silvia-pi
+PYTHON      ?= python
 INSTALL_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 UNIT_DST    := /etc/systemd/system/$(SERVICE).service
 LOGROTATE_DST := /etc/logrotate.d/$(SERVICE)
 LOG_DIR     := $(INSTALL_DIR)/logs
 
-.PHONY: install uninstall start stop restart status logs journal enable disable check-root
+.PHONY: install uninstall start stop restart status logs journal enable disable check-root sim sim-deps
+
+sim:
+	SILVIA_SIM=1 $(PYTHON) $(INSTALL_DIR)/silvia-pi.py
+
+sim-deps:
+	$(PYTHON) -m pip install -r $(INSTALL_DIR)/requirements-sim.txt
 
 install: check-root
 	@echo "Installing $(SERVICE) from $(INSTALL_DIR)"

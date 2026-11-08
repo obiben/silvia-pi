@@ -1,0 +1,6 @@
+# Dependencies for running in simulation mode on a desktop (no Pi hardware).
+#   pip install -r requirements-sim.txt
+#   python silvia-pi.py
+pygame
+matplotlib
+jsonpickle

@@ -3,6 +3,7 @@
 import time
 import pygame
 import os
+from simulation import SIM
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -50,12 +51,16 @@ class Chart(object):
 
   @staticmethod
   def start_pygame():
-    os.putenv('SDL_FBDEV', '/dev/fb1')
-    #os.putenv('SDL_MOUSEDRV', 'TSLIB')
-    #os.putenv('SDL_MOUSEDEV', '/dev/input/touchscreen')
+    if not SIM:
+      os.putenv('SDL_FBDEV', '/dev/fb1')
+      #os.putenv('SDL_MOUSEDRV', 'TSLIB')
+      #os.putenv('SDL_MOUSEDEV', '/dev/input/touchscreen')
     pygame.init()
     pygame.display.set_mode(LCD_SIZE, pygame.DOUBLEBUF)
-    pygame.mouse.set_visible(False)
+    if SIM:
+      pygame.display.set_caption('silvia-pi SIM  [Up/Down: temp  B: boost  Space: on/off]')
+    else:
+      pygame.mouse.set_visible(False)
 
   @staticmethod
   def stop_pygame():
@@ -83,8 +88,11 @@ class Chart(object):
     canvas.draw()
     size = canvas.get_width_height()
     renderer = canvas.get_renderer()
-    raw_data = renderer.tostring_rgb()
-    surf = pygame.image.fromstring(raw_data, size, "RGB")
+    try:
+      raw_data, fmt = renderer.tostring_rgb(), "RGB"
+    except AttributeError:  # removed in matplotlib >= 3.10
+      raw_data, fmt = bytes(renderer.buffer_rgba()), "RGBA"
+    surf = pygame.image.frombuffer(raw_data, size, fmt)
     screen = pygame.display.get_surface()
     screen.fill((0, 0, 0))
     screen.blit(surf, (0,0))
@@ -106,13 +114,35 @@ class Chart(object):
       rendered = self._font.render(text, True, color)
       rect = rendered.get_rect(midright=(x_right, y))
       screen.blit(rendered, rect)
-      # small tick pointing at the physical button
-      pygame.draw.line(screen, color, (LCD_WIDTH - 3, y), (LCD_WIDTH - 1, y))
+
+  def handle_sim_key(self, key):
+    """Keyboard stand-ins for the 4 PiTFT buttons when running off the Pi."""
+    import buttons
+    actions = {
+      pygame.K_UP: buttons.increase,
+      pygame.K_DOWN: buttons.decrease,
+      pygame.K_b: buttons.boost,
+      pygame.K_SPACE: buttons.toggle,
+    }
+    if key in actions:
+      actions[key](self._state)
+    elif key == pygame.K_s:
+      self.screenshot('sim-screenshot.png')
+
+  def screenshot(self, path):
+    pygame.image.save(pygame.display.get_surface(), path)
+    logger.info('Screenshot saved to %s', path)
 
   def run(self):
     crashed = False
+    # SIM only: SILVIA_SIM_SCREENSHOT=<file> saves the screen 20 s after start
+    auto_shot = os.environ.get('SILVIA_SIM_SCREENSHOT') if SIM else None
+    auto_shot_at = time.time() + 20
     try:
       while not crashed:
+        if auto_shot and time.time() > auto_shot_at:
+          self.screenshot(auto_shot)
+          auto_shot = None
         if self._last_on_state != self._state['on']:
           color = 'green' if self._state['on'] else 'red'
           self._target_plot.set_color(color)
@@ -122,6 +152,8 @@ class Chart(object):
         for event in pygame.event.get():
           if event.type == pygame.QUIT:
             crashed = True
+          elif SIM and event.type == pygame.KEYDOWN:
+            self.handle_sim_key(event.key)
         # Must be outside the event loop: with no events queued the old
         # placement never slept, so the GUI redrew flat out and ate a core.
         time.sleep(self._refresh_rate)

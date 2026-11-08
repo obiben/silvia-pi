@@ -4,3 +4,4 @@ kill.sh
 restart.sh
 *.debug.js
 logs/*
+sim-screenshot.png

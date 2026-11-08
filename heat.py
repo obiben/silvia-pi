@@ -2,6 +2,7 @@
 
 from time import sleep, time
 from datetime import datetime, timedelta
+import simulation  # must precede RPi import: swaps in the stub off the Pi
 import RPi.GPIO as GPIO
 
 from config import config
@@ -50,7 +51,7 @@ class Heat(object):
           GPIO.output(pin, 1)
           sleep(1)
       else:
-        avgpid = self._state['pidval']
+        avgpid = self._state['pidval'] or 0.
 
         # Full heat
         if avgpid >= 100 :

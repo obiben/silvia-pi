@@ -1,7 +1,7 @@
 import sys
 from time import sleep, time
 from math import isnan
-from max31865 import max31865
+from simulation import SIM
 import PID as PID
 from config import config as conf
 
@@ -14,11 +14,14 @@ def c_to_f(c):
 def f_to_c(f):
   return (f-32) * 5. / 9.
 
-print(dir(conf))
-
 class Sensor(object):
   def __init__(self, state):
-    self._sensor = max31865(conf.CS, conf.MISO, conf.MOSI, conf.SCK)
+    if SIM:
+      from fake_sensor import FakeSensor
+      self._sensor = FakeSensor(state)
+    else:
+      from max31865 import max31865
+      self._sensor = max31865(conf.CS, conf.MISO, conf.MOSI, conf.SCK)
     self._state = state
     self._pid = PID.PID(conf.Pc, conf.Ic, conf.Dc, conf.Sc)
     self._pid.SetPoint = self._state['settemp']

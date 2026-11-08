@@ -1,7 +1,8 @@
 #!/usr/bin/python3
+import os
 import jsonpickle
 
-filename = '/home/pi/silvia-pi/conf.json'
+filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'conf.json')
 
 class Config:
     def __init__(self):
