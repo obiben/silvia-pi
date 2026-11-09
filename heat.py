@@ -6,7 +6,10 @@ so it refuses to close the relay unless the sensor data is fresh and plausible,
 independently of whatever the PID asks for:
 
   * freshness   - no heat if the last valid reading is older than STALE_AFTER
-  * ceiling     - no heat above MAX_TEMP_C or below MIN_TEMP_C (latched fault)
+  * steam       - no heat above STEAM_TEMP_C, no fault: the steam switch bypasses
+                  this relay and takes the boiler to ~140 C, so a reading up there
+                  is normal. state['steam'] lights the icon on the chart.
+  * floor       - no heat below MIN_TEMP_C (latched fault: sensor implausible)
   * rate of rise- near-full power for RISE_CHECK_SECONDS with less than
                   RISE_CHECK_MIN_DELTA of warming means a stuck sensor, dead
                   element or empty boiler (latched fault)
@@ -29,7 +32,7 @@ import logging
 logger = logging.getLogger('silvia.heat')
 
 STALE_AFTER = 2.0            # seconds since the last valid reading before we stop heating
-MAX_TEMP_C = 125.0           # never heat above this, whatever the PID says
+STEAM_TEMP_C = 105.0         # above this the boiler is steaming (or running away): relay stays open
 MIN_TEMP_C = 5.0             # a reading this low means a broken sensor, not a cold kitchen
 RISE_CHECK_SECONDS = 60.0    # at sustained power for this long...
 RISE_CHECK_MIN_DELTA = 2.0   # ...the boiler must have warmed at least this much
@@ -87,8 +90,12 @@ class Heat(object):
       self._stale_logged = False
 
     temp_c = _to_c(self._state['temp'])
-    if temp_c > MAX_TEMP_C:
-      self.fault('temperature %.1f C above ceiling of %.0f C' % (temp_c, MAX_TEMP_C))
+    steam = temp_c > STEAM_TEMP_C
+    if steam != bool(self._state.get('steam')):
+      self._state['steam'] = steam
+      logger.info('Boiler %s %.0f C (%.1f C): relay %s', 'above' if steam else 'back below',
+                  STEAM_TEMP_C, temp_c, 'held open' if steam else 'released')
+    if steam:
       return False
     if temp_c < MIN_TEMP_C:
       self.fault('temperature %.1f C below %.0f C, sensor implausible' % (temp_c, MIN_TEMP_C))
@@ -134,6 +141,7 @@ class Heat(object):
 
       if self._state['snoozeon'] or not self._state['on']:
         self._relay(0)
+        self._state['steam'] = False
         self._rise_window = None
         sleep(1)
         continue

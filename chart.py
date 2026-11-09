@@ -25,7 +25,7 @@ LCD_SIZE = (LCD_WIDTH, LCD_HEIGHT)
 # Vertical centre of each physical PiTFT button, top to bottom (GPIO 17, 22, 23, 27).
 # Tweak these if the labels don't line up with the buttons on your screen.
 BUTTON_Y = [48, 106, 164, 222]
-BUTTON_LABELS = ['temp +', 'temp -', 'boost', 'on / off']
+BUTTON_LABELS = ['t+', 't-', 'boost', None]   # last one reads 'off' while on and 'on' while off
 
 PEN_X = 250                                   # where the nib sits on the paper
 PEN_PIVOT = (LCD_WIDTH + 260, LCD_HEIGHT // 2)  # hinge is well off-screen to the right, mid-height
@@ -122,7 +122,9 @@ class Chart(object):
       random.seed(1842)
       self._paper = self._make_paper()
     self._period = self._paper.get_width()
-    self._labels = self._make_labels()
+    # Two pre-rendered sheets: the power button is labelled with what pressing it will do.
+    self._labels_when_on = self._make_labels('off')
+    self._labels_when_off = self._make_labels('on')
     logger.info('Constructor done')
     state['gui_on'] = True
 
@@ -232,11 +234,11 @@ class Chart(object):
     paper.blit(overlay, (0, 0))
     return paper
 
-  def _make_labels(self):
-    """Static handwritten button labels, pre-rendered once."""
+  def _make_labels(self, power_text):
+    """Handwritten button labels, pre-rendered once per power state."""
     labels = pygame.Surface(LCD_SIZE, pygame.SRCALPHA)
     for text, y in zip(BUTTON_LABELS, BUTTON_Y):
-      txt = self._font_label.render(text, True, INK)
+      txt = self._font_label.render(text or power_text, True, INK)
       rect = txt.get_rect(midright=(LCD_WIDTH - 6, y))
       labels.blit(txt, rect)
       # a little hand-drawn arrow pointing at the button
@@ -314,10 +316,11 @@ class Chart(object):
     self._draw_target(screen)
     self._draw_trace(screen)
     self._draw_stamp(screen)
+    self._draw_steam(screen)
     self._draw_heat(screen)
     self._draw_legend(screen)
     self._draw_fault(screen)
-    screen.blit(self._labels, (0, 0))
+    screen.blit(self._labels_when_on if self._state['on'] else self._labels_when_off, (0, 0))
     self._draw_pen(screen)
     pygame.display.flip()
 
@@ -434,6 +437,28 @@ class Chart(object):
       off = self._font_label.render('machine off', True, RED_INK)
       screen.blit(off, (36, txt.get_height() - 2))
 
+  def _draw_steam(self, screen):
+    """Boiler above the steam threshold: a jet of steam, beside the temperature."""
+    if not self._state.get('steam'):
+      return
+    cx, y0 = 192, 6          # centre line and top of the icon, between the stamp and the target
+    # billowing puffs, back to front: each is a cluster of circles outlined then
+    # refilled a little smaller so only the cloud's outer edge is left inked
+    puffs = [
+      [(cx - 12, y0 + 18, 8), (cx - 6, y0 + 11, 9), (cx + 1, y0 + 17, 7)],
+      [(cx + 10, y0 + 10, 8), (cx + 16, y0 + 17, 7)],
+      [(cx - 3, y0 + 26, 7), (cx + 5, y0 + 23, 9), (cx + 13, y0 + 27, 7)],
+    ]
+    for puff in puffs:
+      for x, y, r in puff:
+        pygame.draw.circle(screen, RED_INK, (x, y), r)
+      for x, y, r in puff:
+        pygame.draw.circle(screen, PAPER_LIGHT, (x, y), r - 2)
+    # the wand's nozzle: three short jets fanning up into the cloud
+    base = y0 + 46
+    for dx in (-5, 0, 5):
+      pygame.draw.line(screen, INK, (cx + 4 + dx, base), (cx + 4 + dx * 2, base - 12), 2)
+
   def _wrap(self, text, font, width):
     """Greedy word wrap for a pygame font."""
     lines, line = [], ''
@@ -459,7 +484,7 @@ class Chart(object):
     head = self._font_label.render('FAULT - heating disabled', True, RED_INK)
     reason = [self._font_small.render(l, True, INK) for l in self._wrap(fault, self._font_small, width - 2 * pad)]
     reset = [self._font_small.render(l, True, RED_INK)
-             for l in self._wrap('press on / off to reset and start heating again', self._font_small, width - 2 * pad)]
+             for l in self._wrap('press on to reset and start heating again', self._font_small, width - 2 * pad)]
     gap = 3
     height = 2 * pad + head.get_height() + gap + sum(r.get_height() for r in reason) + gap + sum(r.get_height() for r in reset)
     top = (LCD_HEIGHT - height) // 2 + 6   # a touch below centre: the stamp owns the top left

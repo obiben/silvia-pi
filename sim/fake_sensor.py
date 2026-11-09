@@ -13,6 +13,8 @@ sensor.py, starting SILVIA_SIM_FAULT_AFTER seconds in (default 30):
   SILVIA_SIM_FAULT=spikes   random +/-40 degree outliers, 5% of readings
   SILVIA_SIM_FAULT=runaway  reading climbs 2 degrees/s regardless of the element
   SILVIA_SIM_FAULT=cold     reading drops to 0 degrees
+  SILVIA_SIM_FAULT=steam    not a fault: the steam switch (which bypasses our relay) takes the
+                            boiler to ~140 degrees and holds it there, as on the real machine
 """
 import os
 import random
@@ -68,4 +70,6 @@ class FakeSensor(object):
       return reading + since * 2.0
     if FAULT == 'cold':
       return 0.0 + random.gauss(0, NOISE)
+    if FAULT == 'steam':
+      return min(reading + since * 1.2, 140.0 + random.gauss(0, 0.5))
     return reading

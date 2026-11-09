@@ -105,6 +105,7 @@ if __name__ == '__main__':
   pidstate['avgpid'] = 0.
   pidstate['temp'] = 0.
   pidstate['heating'] = False
+  pidstate['steam'] = False       # boiler above the steam threshold: relay held open, icon shown
   pidstate['avgtemp'] = None
   pidstate['exit'] = False
   pidstate['pterm'] = None

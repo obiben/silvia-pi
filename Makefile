@@ -9,7 +9,7 @@
 #   make sim              run on a desktop with simulated hardware (no sudo)
 #                         inject sensor faults to watch the safeguards trip, e.g.
 #                           SILVIA_SIM_FAULT=stuck SILVIA_SIM_START=60 make sim
-#                         (faults: stuck nan spikes runaway cold; see sim/fake_sensor.py)
+#                         (faults: stuck nan spikes runaway cold steam; see sim/fake_sensor.py)
 #   make sim-deps         pip install what the simulation needs
 
 SERVICE     := silvia-pi
