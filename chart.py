@@ -316,6 +316,7 @@ class Chart(object):
     self._draw_stamp(screen)
     self._draw_heat(screen)
     self._draw_legend(screen)
+    self._draw_fault(screen)
     screen.blit(self._labels, (0, 0))
     self._draw_pen(screen)
     pygame.display.flip()
@@ -429,9 +430,57 @@ class Chart(object):
     # Target in the top right corner, above the button labels.
     sub = self._font_small.render(u'cible %.1f°' % self._state['settemp'], True, RED_INK)
     screen.blit(sub, sub.get_rect(topright=(LCD_WIDTH - 6, 2)))
-    if not self._state['on']:
+    if not self._state['on'] and not self._state.get('fault'):   # the fault notice says it instead
       off = self._font_label.render('machine off', True, RED_INK)
       screen.blit(off, (36, txt.get_height() - 2))
+
+  def _wrap(self, text, font, width):
+    """Greedy word wrap for a pygame font."""
+    lines, line = [], ''
+    for word in text.split():
+      trial = (line + ' ' + word).strip()
+      if line and font.size(trial)[0] > width:
+        lines.append(line)
+        line = word
+      else:
+        line = trial
+    if line:
+      lines.append(line)
+    return lines
+
+  def _draw_fault(self, screen):
+    """Safety latch tripped: a notice across the paper saying why and how to reset."""
+    fault = self._state.get('fault')
+    if not fault:
+      return
+    pad = 8
+    left, right = 10, PEN_X - 10
+    width = right - left
+    head = self._font_label.render('FAULT - heating disabled', True, RED_INK)
+    reason = [self._font_small.render(l, True, INK) for l in self._wrap(fault, self._font_small, width - 2 * pad)]
+    reset = [self._font_small.render(l, True, RED_INK)
+             for l in self._wrap('press on / off to reset and start heating again', self._font_small, width - 2 * pad)]
+    gap = 3
+    height = 2 * pad + head.get_height() + gap + sum(r.get_height() for r in reason) + gap + sum(r.get_height() for r in reset)
+    top = (LCD_HEIGHT - height) // 2 + 6   # a touch below centre: the stamp owns the top left
+
+    # Faded paper behind the ink so the notice reads over the traces.
+    box = pygame.Surface((width, height), pygame.SRCALPHA)
+    box.fill(PAPER_LIGHT + (215,))
+    screen.blit(box, (left, top))
+    pygame.draw.rect(screen, RED_INK, (left, top, width, height), 2)
+    pygame.draw.rect(screen, RED_INK, (left + 3, top + 3, width - 6, height - 6), 1)
+
+    y = top + pad
+    screen.blit(head, (left + pad, y))
+    y += head.get_height() + gap
+    for r in reason:
+      screen.blit(r, (left + pad, y))
+      y += r.get_height()
+    y += gap
+    for r in reset:
+      screen.blit(r, (left + pad, y))
+      y += r.get_height()
 
   def _draw_pen(self, screen):
     """Only the last stretch of a long needle is on screen; it tapers to the nib."""

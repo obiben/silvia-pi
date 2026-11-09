@@ -40,6 +40,9 @@ def decrease(state):
 def toggle(state):
   logger.info("Toggle button pressed")
   state['on'] = not state['on']
+  if state['on'] and state.get('fault'):
+    logger.warning("Fault cleared by toggle button: %s", state['fault'])
+    state['fault'] = None
   _backlight(BACKLIGHT_ON if state['on'] else BACKLIGHT_DIM)
 
 

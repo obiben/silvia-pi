@@ -30,6 +30,9 @@ class Sensor(object):
 
     self._nan_count = 0
     self._outlier_count = 0
+    self._last_good = None   # last accepted reading, in C
+    self._flat_value = None  # flatline detector: identical readings for too long
+    self._flat_since = 0
     self._i=0
     self._pidhist = [0.,0.,0.,0.,0.,0.,0.,0.,0.,0.]
     self._avgpid = 0.
@@ -61,26 +64,59 @@ class Sensor(object):
         print(self._state)
       self.sleep()
 
+  MAX_NAN = 1000           # consecutive NaN/zero readings before giving up on the sensor
+  MAX_OUTLIERS = 100       # consecutive outliers before latching a fault
+  OUTLIER_DELTA = 15.0     # degC jump from the last accepted reading that cannot be real
+  INVALID_BEFORE_ZERO = 5  # consecutive invalid readings before the PID output is zeroed
+  FLATLINE_SECONDS = 60    # bit-identical readings for this long = stuck sensor (a live PT100 always wanders)
+
+  def _fault(self, reason):
+    if self._state.get('fault'):
+      return
+    logger.error('FAULT, heating disabled until toggled back on: %s', reason)
+    self._state['fault'] = reason
+    self._state['on'] = False
+    self._state['pidval'] = 0
+    self._state['avgpid'] = 0
+
+  def check_flatline(self, tempc):
+    now = time()
+    if tempc != self._flat_value:
+      self._flat_value, self._flat_since = tempc, now
+    elif now - self._flat_since >= self.FLATLINE_SECONDS:
+      self._fault('sensor reading frozen at %.2f for %.0f s' % (tempc, now - self._flat_since))
+
+  def _invalid(self):
+    """Called for every rejected reading: don't leave a stale PID output driving the relay."""
+    if self._nan_count + self._outlier_count >= self.INVALID_BEFORE_ZERO:
+      self._state['pidval'] = 0
+      self._state['avgpid'] = 0
+
   def validate_temp(self, tempc):
     if isnan(tempc) or tempc == 0.0:
       self._nan_count += 1
-      if self._nan_count > 1000:
+      self._invalid()
+      if self._nan_count > self.MAX_NAN:
         self._state['on'] = False
-        logger.error('100 000 consecutive NaN values from sensor')
-        raise Exception('100 000 consecutive NaN values from sensor')
+        logger.error('%d consecutive NaN/zero readings from sensor', self.MAX_NAN)
+        raise Exception('%d consecutive NaN/zero readings from sensor' % self.MAX_NAN)
       return False
-    else:
-      if self._i > len(self._temphist) and abs(tempc-self._avgtemp) > 15.0:
-        self._outlier_count += 1
-        logger.info('Outlier: {}'.format(tempc))
-        if self._outlier_count > 50:
-          logger.error('Outlier count exceeds 50, going to take a nap')
-          self._state['on'] = False
-        return True
 
-      self._outlier_count = 0
-      self._nan_count = 0
-      return True
+    # A real boiler cannot jump 15 degrees between two readings: reject it.
+    # Compared against the last *accepted* reading, so outliers can't poison the reference.
+    if self._last_good is not None and abs(tempc - self._last_good) > self.OUTLIER_DELTA:
+      self._outlier_count += 1
+      self._invalid()
+      logger.info('Outlier rejected: %.2f (last good %.2f)', tempc, self._last_good)
+      if self._outlier_count > self.MAX_OUTLIERS:
+        self._fault('%d consecutive outliers from sensor' % self.MAX_OUTLIERS)
+      return False
+
+    self._outlier_count = 0
+    self._nan_count = 0
+    self._last_good = tempc
+    self.check_flatline(tempc)
+    return True
 
   def convert_if_needed(self, tempc):
     if conf.celsius:
@@ -108,6 +144,7 @@ class Sensor(object):
     self._state['i'] = self._i
     self._state['temp'] = round(temp, 2)
     self._state['avgtemp'] = round(self._avgtemp, 2)
+    self._state['last_update'] = time()   # heat.py withholds heat if this goes stale
     diff = self._lastsettemp - self._avgtemp
 
     # Be aggressive on machine startup

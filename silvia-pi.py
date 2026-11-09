@@ -115,6 +115,8 @@ if __name__ == '__main__':
   pidstate['boost'] = 0
   pidstate['on'] = True
   pidstate['gui_on'] = False
+  pidstate['fault'] = None        # latched safety fault text, cleared by the toggle button
+  pidstate['last_update'] = 0     # time() of the last valid sensor reading
   logger.info('Main process started%s', ' (SIMULATION, no hardware)' if SIM else '')
 
   logger.info('Starting PID loop')

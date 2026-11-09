@@ -22,8 +22,11 @@
 #SOFTWARE.
 
 import time, math
+import logging
 import RPi.GPIO as GPIO
 #import numpy
+
+logger = logging.getLogger('silvia.max31865')
 
 class max31865(object):
 	"""Reading Temperature from the MAX31865 with GPIO using 
@@ -39,6 +42,7 @@ class max31865(object):
 		self.misoPin = misoPin
 		self.mosiPin = mosiPin
 		self.clkPin = clkPin
+		self._last_fault = None
 		self.setupGPIO()
 		
 	def setupGPIO(self):
@@ -112,12 +116,24 @@ class max31865(object):
 		# bits 1,0 don't care	
 		#print "Status byte: %x" % status
 
-		if ((status & 0x80) == 1):
-			raise FaultError("High threshold limit (Cable fault/open)")
-		if ((status & 0x40) == 1):
-			raise FaultError("Low threshold limit (Cable fault/short)")
-		if ((status & 0x04) == 1):
-			raise FaultError("Overvoltage or Undervoltage Error") 
+		# Report chip faults as NaN so the caller treats the reading as missing
+		# rather than as a plausible number. (The original tests compared the
+		# masked byte to 1, which could never be true.)
+		fault = None
+		if status & 0x80:
+			fault = "High threshold limit (Cable fault/open)"
+		elif status & 0x40:
+			fault = "Low threshold limit (Cable fault/short)"
+		elif status & 0x04:
+			fault = "Overvoltage or Undervoltage Error"
+		if fault != self._last_fault:
+			if fault:
+				logger.warning("MAX31865 fault (status 0x%02x): %s", status, fault)
+			else:
+				logger.info("MAX31865 fault cleared")
+			self._last_fault = fault
+		if fault:
+			return float('nan')
 
 		return temp_C
 		
