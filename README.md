@@ -12,6 +12,9 @@ A Raspberry Pi modification to the Rancilio Silvia Espresso Machine implementing
 This is based on http://github.com/brycesub/silvia-pi and adapted to graph current and target temperatures on a PiTFT28 fitted above the steam valve.
 #### UI
 Target temp can be controlled via buttons. Bottom button dims the led backlight and turns off heating.
+Holding the bottom button for a second opens the timer menu, where the machine can be set to turn
+itself on and off at fixed times: up/down move the chosen time by 15 minutes, the boost button
+moves between the on time, the off time and the enabled switch, and the bottom button saves and exits.
 ![Machine with LCD](media/screen_plexi_copper.jpg?raw=true "LCD Display")
 
 #### Hardware

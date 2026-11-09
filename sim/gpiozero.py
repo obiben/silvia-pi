@@ -6,6 +6,7 @@ class Button(object):
     self.pin = pin
     self.when_pressed = None
     self.when_released = None
+    self.when_held = None
 
   def press(self):
     if self.when_pressed:

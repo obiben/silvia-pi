@@ -9,11 +9,13 @@ right-hand margin.
 """
 
 import math
+from datetime import datetime
 import os
 import random
 import time
 import pygame
 from simulation import SIM, BASE_DIR
+import buttons
 
 import logging
 logger = logging.getLogger('silvia.gui')
@@ -26,6 +28,8 @@ LCD_SIZE = (LCD_WIDTH, LCD_HEIGHT)
 # Tweak these if the labels don't line up with the buttons on your screen.
 BUTTON_Y = [48, 106, 164, 222]
 BUTTON_LABELS = ['t+', 't-', 'boost', None]   # last one reads 'off' while on and 'on' while off
+MENU_LABELS = ['+15', '-15', 'next', 'save']  # the same buttons while the timer menu is open
+MENU_ROWS = [('on at', 'timer_on'), ('off at', 'timer_off'), ('timer', 'timer_enabled')]
 
 PEN_X = 250                                   # where the nib sits on the paper
 PEN_PIVOT = (LCD_WIDTH + 260, LCD_HEIGHT // 2)  # hinge is well off-screen to the right, mid-height
@@ -123,8 +127,10 @@ class Chart(object):
       self._paper = self._make_paper()
     self._period = self._paper.get_width()
     # Two pre-rendered sheets: the power button is labelled with what pressing it will do.
-    self._labels_when_on = self._make_labels('off')
-    self._labels_when_off = self._make_labels('on')
+    self._labels_when_on = self._make_labels([t or 'off' for t in BUTTON_LABELS])
+    self._labels_when_off = self._make_labels([t or 'on' for t in BUTTON_LABELS])
+    self._labels_menu = self._make_labels(MENU_LABELS)
+    self._power_down = None                # SIM: when the space bar went down, to tell a hold from a press
     logger.info('Constructor done')
     state['gui_on'] = True
 
@@ -234,11 +240,11 @@ class Chart(object):
     paper.blit(overlay, (0, 0))
     return paper
 
-  def _make_labels(self, power_text):
-    """Handwritten button labels, pre-rendered once per power state."""
+  def _make_labels(self, texts):
+    """Handwritten button labels, pre-rendered once per screen."""
     labels = pygame.Surface(LCD_SIZE, pygame.SRCALPHA)
-    for text, y in zip(BUTTON_LABELS, BUTTON_Y):
-      txt = self._font_label.render(text or power_text, True, INK)
+    for text, y in zip(texts, BUTTON_Y):
+      txt = self._font_label.render(text, True, INK)
       rect = txt.get_rect(midright=(LCD_WIDTH - 6, y))
       labels.blit(txt, rect)
       # a little hand-drawn arrow pointing at the button
@@ -256,7 +262,7 @@ class Chart(object):
     pygame.init()
     pygame.display.set_mode(LCD_SIZE, pygame.DOUBLEBUF)
     if SIM:
-      pygame.display.set_caption('silvia-pi SIM  [Up/Down: temp  B: boost  Space: on/off  S: screenshot]')
+      pygame.display.set_caption('silvia-pi SIM  [Up/Down: temp  B: boost  Space: on/off (hold: timer menu)  S: screenshot]')
     else:
       pygame.mouse.set_visible(False)
 
@@ -308,6 +314,10 @@ class Chart(object):
 
   def plot(self):
     screen = pygame.display.get_surface()
+    if self._state.get('menu') is not None:
+      self._draw_menu(screen)
+      pygame.display.flip()
+      return
     step = self._update_range()
 
     self._blit_paper(screen)
@@ -433,9 +443,36 @@ class Chart(object):
     # Target in the top right corner, above the button labels.
     sub = self._font_small.render(u'cible %.1f°' % self._state['settemp'], True, RED_INK)
     screen.blit(sub, sub.get_rect(topright=(LCD_WIDTH - 6, 2)))
+    if self._state.get('timer_enabled'):
+      tmr = self._font_small.render('%s - %s' % (self._state['timer_on'], self._state['timer_off']), True, INK_SOFT)
+      screen.blit(tmr, tmr.get_rect(topright=(LCD_WIDTH - 6, 2 + sub.get_height() - 2)))
     if not self._state['on'] and not self._state.get('fault'):   # the fault notice says it instead
       off = self._font_label.render('machine off', True, RED_INK)
       screen.blit(off, (36, txt.get_height() - 2))
+
+  def _draw_menu(self, screen):
+    """The timer menu: on time, off time, enabled, with the chosen row marked in red."""
+    self._blit_paper(screen)
+    title = self._font_stamp.render('timer', True, INK)
+    screen.blit(title, (34, 2))
+    clock = self._font_small.render('now %s' % datetime.now().strftime('%H:%M'), True, INK_SOFT)
+    screen.blit(clock, clock.get_rect(topright=(LCD_WIDTH - 6, 2)))
+    chosen = self._state['menu']
+    for i, (name, key) in enumerate(MENU_ROWS):
+      y = 62 + i * 48
+      value = self._state[key]
+      if key == 'timer_enabled':
+        value = 'enabled' if value else 'disabled'
+      color = RED_INK if i == chosen else INK
+      screen.blit(self._font_label.render(name, True, INK), (40, y + 8))
+      screen.blit(self._font_stamp.render(value, True, color), (118, y))
+      if i == chosen:
+        # a hand-drawn arrow at the chosen row
+        ay = y + 20
+        pygame.draw.line(screen, RED_INK, (12, ay), (30, ay), 2)
+        pygame.draw.line(screen, RED_INK, (24, ay - 5), (30, ay), 2)
+        pygame.draw.line(screen, RED_INK, (24, ay + 5), (30, ay), 2)
+    screen.blit(self._labels_menu, (0, 0))
 
   def _draw_steam(self, screen):
     """Boiler above the steam threshold: a jet of steam, beside the temperature."""
@@ -545,12 +582,10 @@ class Chart(object):
 
   def handle_sim_key(self, key):
     """Keyboard stand-ins for the 4 PiTFT buttons when running off the Pi."""
-    import buttons
     actions = {
       pygame.K_UP: buttons.increase,
       pygame.K_DOWN: buttons.decrease,
       pygame.K_b: buttons.boost,
-      pygame.K_SPACE: buttons.toggle,
     }
     if key in actions:
       actions[key](self._state)
@@ -577,7 +612,17 @@ class Chart(object):
           if event.type == pygame.QUIT:
             crashed = True
           elif SIM and event.type == pygame.KEYDOWN:
-            self.handle_sim_key(event.key)
+            if event.key == pygame.K_SPACE:
+              self._power_down = time.time()
+            else:
+              self.handle_sim_key(event.key)
+          elif SIM and event.type == pygame.KEYUP and event.key == pygame.K_SPACE:
+            self._power_down = None
+            buttons.power_released(self._state)
+        # SIM: the space bar held for HOLD_SECONDS acts like holding the power button
+        if self._power_down is not None and time.time() - self._power_down >= buttons.HOLD_SECONDS:
+          self._power_down = None
+          buttons.power_held(self._state)
         time.sleep(self._refresh_rate)
     except Exception:
       logger.exception('GUI loop crashed')

@@ -20,13 +20,14 @@ final guard; this cannot catch a sensor that is stuck *near* the setpoint.
 """
 
 from time import sleep, time
-from datetime import datetime
 import simulation  # must precede RPi import: swaps in the stub off the Pi
 import RPi.GPIO as GPIO
 
 from config import config
 he_pins = config.he_pins
 max_sleep = config.sample_time
+
+from timer import Timer
 
 import logging
 logger = logging.getLogger('silvia.heat')
@@ -50,6 +51,7 @@ class Heat(object):
     self._state = state
     self._stale_logged = False
     self._rise_window = None   # (start_time, start_temp) while at high duty
+    self._timer = Timer(state)
     self.setup()
 
   def setup(self):
@@ -132,14 +134,9 @@ class Heat(object):
     while True:
       now = time()
 
-      # Check if snooze is over
-      if self._state['snoozeon'] == True:
-        dt = datetime.strptime(self._state['snooze'], '%H:%M')
-        n = datetime.now()
-        if dt.hour == n.hour and dt.minute == n.minute:
-          self._state['snoozeon'] = False
+      self._timer.check()
 
-      if self._state['snoozeon'] or not self._state['on']:
+      if not self._state['on']:
         self._relay(0)
         self._state['steam'] = False
         self._rise_window = None

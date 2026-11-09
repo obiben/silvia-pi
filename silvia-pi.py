@@ -72,8 +72,10 @@ def gpio_temp_control(lock, state):
   up.when_pressed = lambda: buttons.increase(state)
   down = Button(22)
   down.when_pressed = lambda: buttons.decrease(state)
-  kill = Button(27)
-  kill.when_pressed = lambda: buttons.toggle(state)
+  # Power button: short press acts on release, a hold opens the timer menu
+  kill = Button(27, hold_time=buttons.HOLD_SECONDS)
+  kill.when_held = lambda: buttons.power_held(state)
+  kill.when_released = lambda: buttons.power_released(state)
   boost = Button(23)
   boost.when_pressed = lambda: buttons.boost(state)
 
@@ -98,8 +100,11 @@ if __name__ == '__main__':
   lock = Lock()
   manager = Manager()
   pidstate = manager.dict()
-  pidstate['snooze'] = conf.snooze
-  pidstate['snoozeon'] = False
+  # Timer: older conf.json files predate these, hence the defaults
+  pidstate['timer_on'] = getattr(conf, 'timer_on', '06:30')
+  pidstate['timer_off'] = getattr(conf, 'timer_off', '09:00')
+  pidstate['timer_enabled'] = bool(getattr(conf, 'timer_enabled', False))
+  pidstate['menu'] = None         # index into buttons.MENU_FIELDS while the timer menu is open
   pidstate['i'] = 0
   pidstate['settemp'] = conf.set_temp
   pidstate['avgpid'] = 0.

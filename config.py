@@ -22,8 +22,10 @@ class Config:
         self.celsius = True
         self.set_temp = 96.
 
-        # Default alarm time
-        self.snooze = '07:00'
+        # Automatic on / off times (set from the timer menu: hold the power button)
+        self.timer_on = '06:30'
+        self.timer_off = '09:00'
+        self.timer_enabled = False
 
         # Main loop sample rate in seconds
         self.sample_time = 0.3
