@@ -29,7 +29,7 @@ LCD_SIZE = (LCD_WIDTH, LCD_HEIGHT)
 BUTTON_Y = [48, 106, 164, 222]
 BUTTON_LABELS = ['t+', 't-', 'boost', None]   # last one reads 'off' while on and 'on' while off
 MENU_LABELS = ['+15', '-15', 'next', 'save']  # the same buttons while the timer menu is open
-MENU_ROWS = [('on at', 'timer_on'), ('off at', 'timer_off'), ('timer', 'timer_enabled')]
+MENU_ROWS = [('on at', 'timer_on'), ('off at', 'timer_off'), ('timer', 'timer_enabled'), ('update', 'update')]
 
 PEN_X = 250                                   # where the nib sits on the paper
 PEN_PIVOT = (LCD_WIDTH + 260, LCD_HEIGHT // 2)  # hinge is well off-screen to the right, mid-height
@@ -459,13 +459,19 @@ class Chart(object):
     screen.blit(clock, clock.get_rect(topright=(LCD_WIDTH - 6, 2)))
     chosen = self._state['menu']
     for i, (name, key) in enumerate(MENU_ROWS):
-      y = 62 + i * 48
-      value = self._state[key]
-      if key == 'timer_enabled':
-        value = 'enabled' if value else 'disabled'
+      y = 48 + i * 44
       color = RED_INK if i == chosen else INK
+      font = self._font_stamp
+      if key == 'update':
+        value = self._state.get('update_status') or 'press + to run'
+        font = self._font_label
+      elif key == 'timer_enabled':
+        value = 'enabled' if self._state[key] else 'disabled'
+      else:
+        value = self._state[key]
       screen.blit(self._font_label.render(name, True, INK), (40, y + 8))
-      screen.blit(self._font_stamp.render(value, True, color), (118, y))
+      txt = font.render(value, True, color)
+      screen.blit(txt, (118, y + (self._font_stamp.get_height() - txt.get_height()) // 2))
       if i == chosen:
         # a hand-drawn arrow at the chosen row
         ay = y + 20

@@ -3,7 +3,8 @@ keyboard shortcuts of the simulated GUI (chart.py).
 
 Normally: up/down nudge the target, boost heats for 5 s, power toggles the machine.
 Holding the power button for HOLD_SECONDS opens the timer menu, where the same
-buttons become +15 min / -15 min / next field / save and exit.
+buttons become +15 min / -15 min / next field / save and exit. The menu's last
+row, update, pulls new code and restarts the service when the + button is pressed.
 """
 import os
 from time import time
@@ -19,7 +20,7 @@ BACKLIGHT_DIM = 100
 
 HOLD_SECONDS = 1.0                      # power button held this long opens the timer menu
 STEP_MINUTES = 15
-MENU_FIELDS = ['timer_on', 'timer_off', 'timer_enabled']   # state['menu'] indexes this
+MENU_FIELDS = ['timer_on', 'timer_off', 'timer_enabled', 'update']   # state['menu'] indexes this
 
 
 def _backlight(level):
@@ -44,6 +45,11 @@ def add_minutes(hhmm, delta):
 
 def _menu_adjust(state, direction):
   field = MENU_FIELDS[state['menu']]
+  if field == 'update':
+    if direction > 0 and not state.get('update_request') and state.get('update_status') != 'updating...':
+      logger.info('Update requested from the menu')
+      state['update_request'] = True   # the main process does the pull (update.py)
+    return
   if field == 'timer_enabled':
     state[field] = not state[field]
   else:
@@ -118,6 +124,7 @@ def power_held(state):
   _held = True
   if not in_menu(state):
     state['menu'] = 0
+    state['update_status'] = None
     logger.info('Timer menu opened')
 
 

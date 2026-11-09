@@ -105,6 +105,8 @@ if __name__ == '__main__':
   pidstate['timer_off'] = getattr(conf, 'timer_off', '09:00')
   pidstate['timer_enabled'] = bool(getattr(conf, 'timer_enabled', False))
   pidstate['menu'] = None         # index into buttons.MENU_FIELDS while the timer menu is open
+  pidstate['update_request'] = False   # set from the menu; the loop below runs update.py
+  pidstate['update_status'] = None
   pidstate['i'] = 0
   pidstate['settemp'] = conf.set_temp
   pidstate['avgpid'] = 0.
@@ -166,6 +168,13 @@ if __name__ == '__main__':
     try:
       if pidstate['exit']:
         break
+      if pidstate.get('update_request'):
+        pidstate['update_request'] = False
+        import update
+        if update.run(pidstate):
+          logger.info('New code pulled, exiting so the service restarts on it')
+          sleep(1)   # let the menu show "restarting..." before the screen goes
+          break
       if show_status:
         print(fmt.format('P: {pterm:7.2f}\tI: {iterm:7.2f}\tD: {dterm:7.2f}\tS: {sterm:7.2f}\tOut: {pidval:7.2f} Avg PID: {avgpid:7.2f}\tTemp: {temp:7.2f}\tAvg Temp: {avgtemp:7.2f}', **pidstate))
       sleep(1)

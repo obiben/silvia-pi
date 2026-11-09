@@ -15,6 +15,8 @@ Target temp can be controlled via buttons. Bottom button dims the led backlight 
 Holding the bottom button for a second opens the timer menu, where the machine can be set to turn
 itself on and off at fixed times: up/down move the chosen time by 15 minutes, the boost button
 moves between the on time, the off time and the enabled switch, and the bottom button saves and exits.
+The menu's last row, update, pulls the latest code with git and restarts the service when the up
+button is pressed on it.
 ![Machine with LCD](media/screen_plexi_copper.jpg?raw=true "LCD Display")
 
 #### Hardware
